@@ -188,8 +188,10 @@ if __name__ == "__main__":
 
   steps_per_epoch = len(dataloader)
   total_steps = steps_per_epoch * config.training.epochs
-  
-  warmup_steps = int(config.scheduler.warmup_ratio * total_steps)
+  if config.training.scheduler.get('warmup_steps', None) is not None:
+    warmup_steps = config.training.scheduler.warmup_steps
+  else:
+    warmup_steps = int(config.training.scheduler.warmup_ratio * total_steps)
 
   scheduler = WarmupCosineScheduler(
     optimizer,
