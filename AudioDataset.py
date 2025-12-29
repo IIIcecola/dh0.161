@@ -12,7 +12,7 @@ import json
 import torch
 
 from tqdm import tqdm
-
+from typing import List, Tuple, Any
 from torch.utils.data import Dataset, DataLoader
 
 from PreProcess import ctrl_expressions as ctrl_expressions_list
@@ -324,25 +324,26 @@ class AudioDataset(Dataset):
                 
         self.input_list = [] 
         self.output_list = []
-
-        # 新增
-        self.module_mapping = config.module_mapping
+        self.datasets_list = config.datasets_list
         self.samples = []  # 存储所有模块的样本
         self.module_labels = []  # 存储每个样本的模块标签
-        # 遍历每个模块，加载样本并绑定标签
-        for module_name, module_info in self.module_mapping.items():
-            module_path = module_info["path"]  # 模块的缓存路径
-            sample_num = module_info["sample_num"]  # 该模块需要加载的样本数量
-
-            # 加载当前模块的样本
+        self.sample_weights = []
+        self.loss_weights = []
+        for dataset in config.datasets_list:
             module_samples = self._load_module_samples(
-                cache_path=module_path,
-                sample_num=sample_num
+                cache_path=os.path.join(config.cache_path, dataset.file_name. 'temp'),
+                sample_mode=dataset.sample_mode,
+                sample_num=dataset.get('num_sample', -1)
             )
-
-            # 将当前模块的样本和标签加入全局列表
+            if len(module_samples) == 0:
+                raise ValueError(f"训练接{dataset.file_name}，载入的样本数量为{len(module_samples)}" )
+            
             self.samples.extend(module_samples)
-            self.module_labels.extend([module_name] * len(module_samples))
+            self.module_labels.extend([dataset.file_name] * len(module_samples))
+            self.sample_weights.extend([dataset.sample_weight] * len(module_samples))
+            self.loss_weights.extend([dataset.loss_weight] * len(module_samples))
+        self.sample_weights = torch.tensor(self.sample_weights, dtype=torch.float32)
+        self.loss_weights = torch.tensor(self.loss_weights, dtype=torch.float32)
 
     def _load_module_samples(self, cache_path, sample_num):
         """
@@ -351,17 +352,28 @@ class AudioDataset(Dataset):
         :param sample_num: 该模块需要加载的总样本数量
         :return: list[(audio_feat, target)] 加载完成的样本列表
         """
-        temp_samples = []
-
         # 1. 遍历缓存目录下的pkl文件（复用原有_load_cache_from_dir逻辑）
-        if not os.path.exists(cache_path):
+        if not os.path.isdir(cache_path):
             raise FileNotFoundError(f"模块缓存路径{cache_path}不存在！")
-        
+        valid_modes = {"all", "sequential", "random"}
+        if sample_mode not in valid_modes:
+            raise ValueError(
+                f"sample_mode 必须是{valid_modes}之一"
+            )
+        if sample_mode != "all":
+            if not isinstance(sample_num, int) or sample_num <= 0:
+                raise ValueError(
+                    f"sample_num 必须是正整数"
+                )
         # 获取缓存目录下所有pkl文件并排序
         cache_files = sorted([f for f in os.listdir(cache_path) if f.endswith(".pkl")])
+        total_files = len(cache_files)
+        loaded_samples: List[Tuple[Any, Any]] = []
+
+        tqdm_desc = f"加载模块缓存"
+        iterator = tqdm(cache_files, desc=tqdm_desc, unit="file")
         
-        # 2. 加载指定数量的样本
-        for file_idx, file_name in enumerate(tqdm(cache_files, desc=f"加载模块缓存 {cache_path}")):
+        for file_name in iterator:
             file_path = os.path.join(cache_path, file_name)
             try:
                 with open(file_path, 'rb') as f:
@@ -370,16 +382,37 @@ class AudioDataset(Dataset):
                 audio_feat = data['input']  # 对应原有缓存的input（audio feature）
                 target = data['output']     # 对应原有缓存的output（表情特征）
                 temp_samples.append((audio_feat, target))
+
+                # 对于sequential模式，提前退出避免不必要的I/O
+                if (
+                    sample_mode=="sequential"
+                    and len(loaded_samples) >= sample_num
+                ):
+                    break
             except (pickle.UnpicklingError, EOFError, AttributeError, ValueError) as e:
                 raise RuntimeError(f"加载缓存文件{file_path}失败：{e}")
-        
-        return temp_samples
-
-    def __len__(self):
+        if sample_mode == "all":
+            return loaded_samples
+        if sample_mode == "sequential":
+            if len(loaded_samples) < sample_num:
+                raise ValueError(
+                    f"目录{cache_path}中仅有{len(loaded_samples)}条样本，"
+                    f"不足以满足 sequential 模式要求的 {sample_num} 条"
+                )
+                return loaded_samples[:sample_num]
+        if len(loaded_samples) < sample_num:
+            raise ValueError(
+                    f"目录{cache_path}中仅有{len(loaded_samples)}条样本，"
+                    f"不足以满足 random 模式要求的 {sample_num} 条"
+                )
+            return random.sample(loaded_samples, sample_num)
     
     def __len__(self):
-        ''' '''
-        return len(self.input_list)
+        '''返回样本和对应的模块标签'''
+        audio_feat, target = self.samples[idx]
+        module_label = self.module_labels[idx]
+        loss_weights = self.loss_weights[idx]
+        return audio_feat, target, module_label, loss_weights
     
     def __getitem__(self, idx):
         ''' '''
