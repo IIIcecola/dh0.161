@@ -9,9 +9,9 @@ wav2vec2:
 dataset:
   cache_path: "./Dataset"
   datasets_list:
-    - {file_name: zhuboshuolianbo, sample_mode: all, num_sample: 10, sample_weight: 1, loss_weight: 0.2} # all, sequential, random
-    - {file_name: talk-vid, sample_mode: all, num_sample: 10, sample_weigth: 1, loss_weight: 0.2}
-    # - 'shanzhonglengyuewei'
+    - {file_name: zhuboshuolianbo, sample_mode: all, num_sample: 10, sample_weight: 1, loss_weight: 0.2} # sample_mode有all, sequential, random
+    - {file_name: talk-vid, sample_mode: all, num_sample: 10, sample_weigth: 1, loss_weight: 0.2} 
+    # - 'shanzhonglengyuewei'；talk-vid有1923个.pkl文件，zhuboshuolianbo有7866个.pkl文件
   seconds: 5
   load_flag: True
   use_processor: False
