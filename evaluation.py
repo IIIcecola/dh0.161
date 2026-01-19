@@ -1850,7 +1850,7 @@ class Audio2FaceResultEvaluator:
         # 保存汇总报告
         summary_path = self.summary_dir / f"{result_name}_summary.json"
         with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2)
+            json.dump(summary, f, indent=2, cls=NumpyEncoder)
         
         # 保存详细结果CSV
         csv_path = self.summary_dir / f"{result_name}_detailed.csv"
@@ -2010,6 +2010,19 @@ class Audio2FaceResultEvaluator:
             
         except Exception as e:
             self.logger.warning(f"创建比较可视化失败: {str(e)}")
+
+
+# JSON encoder
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obi)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super().default(obj)
 
 
 def main_backup():
