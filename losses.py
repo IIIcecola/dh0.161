@@ -359,7 +359,7 @@ class LossFactory:
       loss: loss实例
     """
     loss_type = loss_config.get("loss_type", "mse")
-    if loss_type == "combinde":
+    if loss_type == "combined":
       return CombinedLoss(loss_config["losses"])
     elif loss_type in CombinedLoss.LOSS_REGISTRY:
       loss_class = CombinedLoss.LOSS_REGISTRY[loss_type]
