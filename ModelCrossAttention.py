@@ -51,7 +51,36 @@ class AudioEncoder(nn.Nodule):
         self.pos_encoding = PositionalEncoding(d_model)
         self.dropout = nn.Dropout(drpout)
 
-
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T_audio, 768)音频特征
+        Returns:
+            encoded: (B, T_audio, 768)编码后的音频特征
+        """
+        if encoder_type == 'transformer':
+            x = self.pos_encoding(x)
+            x = self.dropout(x)
+            encoded = self.encoder(x)
+        elif encoder_type == 'cnn':
+            x_orig = x.transpose(1, 2) # (B, 768, T)
+            features = []
+            for conv in self.conv_layers:
+                if isinstance(conv, nn.Identity):
+                    feat = x_orig
+                else:
+                    feat = conv(x_orig)
+                features.append(feat)
+            concat = torch.cat(features, dim=1)
+            fused = self.fusion(concat)
+            encoded = fused.transpose(1, 2)
+        elif encoder_type == 'conformer':
+            x = self.pos_encoding(x)
+            x = self.dropout(x)
+            encoded = x
+            for layer in self.encoder:
+                encoded = layer(encoded)
+        return encoded
 
 
 class FaceQueryGenerator(nn.Module):
